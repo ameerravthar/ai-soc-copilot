@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(./venv/bin/python - <<'PY'\nimport sys, os\nsys.path.append\\(os.getcwd\\(\\)\\)\nfrom src.core.reasoning.threat_intel_agent import _detect_ioc\nsamples = ['john.doe','admin.user','evil.com','https://evil.com/payload.exe']\nfor s in samples:\n    print\\(s, '->', _detect_ioc\\(s\\)\\)\nPY)"
+    ]
+  }
+}

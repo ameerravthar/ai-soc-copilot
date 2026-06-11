@@ -1,11 +1,8 @@
 """SOC‑style Streamlit UI for the AI SOC Copilot MVP.
 
-Phase 2.5 added richer UI elements. Phase 3 now integrates the AI
-Security Analyst layer, which calls an OpenAI‑compatible endpoint to turn
-the deterministic investigation results into a polished analyst report.
-If the required environment variables (OPENAI_API_KEY, etc.) are missing
-or the API request fails, the UI shows a warning and continues to work
-without the AI section.
+Phase 2.5 added richer UI elements. Phase 3 integrated the AI analyst
+report. Phase 4 now adds a Threat Intelligence section that deterministically
+enriches IOCs from the alert.
 """
 
 from __future__ import annotations
@@ -20,10 +17,12 @@ import streamlit as st
 from src.core.models.alert import Alert
 from src.core.models.severity import SeverityLevel
 from src.core.models.investigation import InvestigationResult
+from src.core.models.threat_intel import ThreatIntelResult
 from src.core.reasoning.severity_engine import calculate_severity
 from src.core.reasoning.mitre_mapper import map_to_mitre
 from src.core.reasoning.investigation_agent import investigate
 from src.core.reasoning.ai_analyst import generate_report
+from src.core.reasoning.threat_intel_agent import enrich_iocs
 
 # --- Helper utilities ------------------------------------------------------
 
@@ -61,7 +60,7 @@ def main() -> None:
     sample_map = {f.name: f for f in sample_files}
     selected = st.sidebar.selectbox("Choose a sample", ["-- none --"] + list(sample_map))
 
-    # ---- Main upload area -------------------------------------------------
+    # ---- Main upload area ------------------------------------------------
     uploaded = st.file_uploader("Upload JSON alert", type="json")
 
     if uploaded is not None:
@@ -87,6 +86,7 @@ def main() -> None:
     investigation: InvestigationResult = investigate(alert)
     techniques = map_to_mitre(alert)
     score, sev_level = calculate_severity(alert)
+    ioc_enrichments: List[ThreatIntelResult] = enrich_iocs(alert)
 
     # ---- Incident Overview ------------------------------------------------
     st.subheader("Incident Overview")
@@ -107,6 +107,7 @@ def main() -> None:
         "Severity Calculated",
         "Risk Assessed",
         "Recommendations Generated",
+        "Threat Intelligence Enriched",
         "Investigation Completed",
     ]
     for step in timeline:
@@ -133,7 +134,7 @@ def main() -> None:
     for rec in investigation.recommendations:
         st.write(f"- {rec}")
 
-    # ---- Analyst Notes -----------------------------------------------------
+    # ---- Analyst Notes ----------------------------------------------------
     st.subheader("Analyst Notes")
     notes = (
         f"The observed activity matches a **{investigation.attack_type}**. "
@@ -141,6 +142,24 @@ def main() -> None:
         f"{investigation.risk_assessment}"
     )
     st.info(notes)
+
+    # ---- Threat Intelligence ------------------------------------------------
+    st.subheader("Threat Intelligence")
+    if not ioc_enrichments:
+        st.info("No IOCs detected in this alert.")
+    else:
+        # Display as a table
+        rows = []
+        for ioc in ioc_enrichments:
+            rows.append({
+                "IOC Type": ioc.ioc_type.upper(),
+                "Value": ioc.value,
+                "Classification": "Internal" if ioc.reputation == "Trusted" else "External",
+                "Reputation": ioc.reputation,
+                "Confidence": ioc.confidence,
+                "Summary": ioc.summary,
+            })
+        st.table(rows)
 
     # ---- AI Analyst Report ------------------------------------------------
     st.subheader("AI Analyst Report")
