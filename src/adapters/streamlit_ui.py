@@ -1,18 +1,17 @@
 """SOC‑style Streamlit UI for the AI SOC Copilot MVP.
 
-Features added in Phase 2.5:
-* Analyst‑style evidence and severity reasoning.
-* Rich risk assessment text.
-* Incident Overview panel.
-* Enhanced timeline with more steps.
-* Severity badge with color coding.
-* Expanded sections (Analyst Notes, Investigation Findings).
-* UI uses expanders, metric cards and spacing for a dashboard feel.
+Phase 2.5 added richer UI elements. Phase 3 now integrates the AI
+Security Analyst layer, which calls an OpenAI‑compatible endpoint to turn
+the deterministic investigation results into a polished analyst report.
+If the required environment variables (OPENAI_API_KEY, etc.) are missing
+or the API request fails, the UI shows a warning and continues to work
+without the AI section.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import streamlit as st
@@ -24,20 +23,21 @@ from src.core.models.investigation import InvestigationResult
 from src.core.reasoning.severity_engine import calculate_severity
 from src.core.reasoning.mitre_mapper import map_to_mitre
 from src.core.reasoning.investigation_agent import investigate
+from src.core.reasoning.ai_analyst import generate_report
 
 # --- Helper utilities ------------------------------------------------------
 
 def load_json(file_path: Path) -> dict:
-    """Load a JSON file; errors surface in the UI."""
+    """Load a JSON file; UI will surface parsing errors."""
     with file_path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 def parse_alert(raw: dict) -> Alert:
-    """Validate and wrap raw dict into an :class:`Alert` model."""
+    """Validate raw dict into an :class:`Alert` model."""
     return Alert(**raw, raw=raw)
 
 def severity_badge(level: SeverityLevel) -> str:
-    """Return an HTML badge with color matching the severity level."""
+    """HTML badge with colour per severity level."""
     colors = {
         SeverityLevel.LOW: "#28a745",
         SeverityLevel.MEDIUM: "#ffc107",
@@ -46,20 +46,22 @@ def severity_badge(level: SeverityLevel) -> str:
     }
     return f"<span style='background:{colors[level]};color:white;padding:2px 6px;border-radius:4px'>{level.value}</span>"
 
-# --- Streamlit layout ------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Streamlit layout
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     st.set_page_config(page_title="AI SOC Copilot MVP", layout="wide")
     st.title("🛡️ AI SOC Copilot – Incident Triage")
 
-    # -------- Sidebar – sample picker ---------------------------------------
+    # ---- Sidebar – sample picker ------------------------------------------
     st.sidebar.header("Sample alerts")
     sample_dir = Path(__file__).resolve().parents[2] / "data" / "sample_alerts"
     sample_files = sorted(sample_dir.glob("*.json"))
     sample_map = {f.name: f for f in sample_files}
     selected = st.sidebar.selectbox("Choose a sample", ["-- none --"] + list(sample_map))
 
-    # -------- Main upload area --------------------------------------------
+    # ---- Main upload area -------------------------------------------------
     uploaded = st.file_uploader("Upload JSON alert", type="json")
 
     if uploaded is not None:
@@ -70,34 +72,33 @@ def main() -> None:
         st.info("Upload an alert JSON or pick a sample to start the investigation.")
         return
 
-    # -------- Raw JSON (expander) ----------------------------------------
+    # ---- Raw JSON (expander) --------------------------------------------
     with st.expander("Raw alert JSON", expanded=False):
         st.json(raw_alert)
 
-    # -------- Parse and validate ------------------------------------------
+    # ---- Parse and validate ------------------------------------------------
     try:
         alert = parse_alert(raw_alert)
     except Exception as exc:  # pylint: disable=broad-except
         st.error(f"❌ Invalid alert format: {exc}")
         return
 
-    # -------- Run pipelines ------------------------------------------------
+    # ---- Run deterministic pipelines ---------------------------------------
     investigation: InvestigationResult = investigate(alert)
     techniques = map_to_mitre(alert)
     score, sev_level = calculate_severity(alert)
 
-    # -------- Incident Overview --------------------------------------------
+    # ---- Incident Overview ------------------------------------------------
     st.subheader("Incident Overview")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Attack Type", investigation.attack_type)
-    col2.metric("Severity", "", "")
     col2.markdown(severity_badge(sev_level), unsafe_allow_html=True)
     col3.metric("Risk Level", sev_level.value)
     col4.metric("MITRE Technique", ", ".join(t.technique_id for t in techniques))
 
-    # -------- Investigation Timeline ---------------------------------------
+    # ---- Investigation Timeline -------------------------------------------
     st.subheader("Investigation Timeline")
-    timeline_steps = [
+    timeline = [
         "Alert Received",
         "Alert Parsed",
         "Evidence Collected",
@@ -108,19 +109,17 @@ def main() -> None:
         "Recommendations Generated",
         "Investigation Completed",
     ]
-    for step in timeline_steps:
+    for step in timeline:
         st.write(f"✅ {step}")
 
-    # -------- Detailed Findings --------------------------------------------
+    # ---- Investigation Findings -------------------------------------------
     st.subheader("Investigation Findings")
-    st.markdown("**Attack Type:** " + investigation.attack_type)
+    st.markdown(f"**Attack Type:** {investigation.attack_type}")
     st.markdown("**Evidence:**")
     for ev in investigation.evidence:
         st.write(f"- {ev}")
-
     st.markdown("**Severity Reasoning:**")
     st.write(investigation.severity_reasoning)
-
     st.markdown("**Risk Assessment:**")
     st.write(investigation.risk_assessment)
 
@@ -134,7 +133,7 @@ def main() -> None:
     for rec in investigation.recommendations:
         st.write(f"- {rec}")
 
-    # -------- Analyst Notes ------------------------------------------------
+    # ---- Analyst Notes -----------------------------------------------------
     st.subheader("Analyst Notes")
     notes = (
         f"The observed activity matches a **{investigation.attack_type}**. "
@@ -143,7 +142,29 @@ def main() -> None:
     )
     st.info(notes)
 
-    # -------- Summary -------------------------------------------------------
+    # ---- AI Analyst Report ------------------------------------------------
+    st.subheader("AI Analyst Report")
+    if not os.getenv("OPENAI_API_KEY"):
+        st.warning(
+            "OpenAI API key not configured. AI analyst report is unavailable. "
+            "Set the `OPENAI_API_KEY` environment variable to enable this feature."
+        )
+    else:
+        with st.spinner("Generating AI analyst report…"):
+            ai_report = generate_report(alert, investigation)
+        if not ai_report:
+            st.error("Failed to obtain AI analyst report. See console for details.")
+        else:
+            st.markdown(f"**Executive Summary:**\n{ai_report.get('executive_summary','')}")
+            st.markdown("**Technical Findings:**")
+            st.write(ai_report.get('technical_findings',''))
+            st.markdown("**Risk Analysis:**")
+            st.write(ai_report.get('risk_analysis',''))
+            st.markdown("**Recommended Actions:**")
+            for act in ai_report.get('recommended_actions', []):
+                st.write(f"- {act}")
+
+    # ---- Summary -----------------------------------------------------------
     st.subheader("Summary")
     st.write(
         f"Alert `{alert.event_type}` from `{alert.source_ip}` targeting `{alert.dest_ip}` "
