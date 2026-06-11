@@ -1,0 +1,12 @@
+{
+  "alert_id": "alert-005",
+  "timestamp": "2026-06-06T18:30:00Z",
+  "source_ip": "198.51.100.45",
+  "dest_ip": "10.0.0.20",
+  "event_type": "suspicious_login",
+  "details": {
+    "username": "john.doe",
+    "login_method": "ssh",
+    "geo": "unknown"
+  }
+}

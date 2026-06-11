@@ -1,0 +1,11 @@
+{
+  "alert_id": "alert-001",
+  "timestamp": "2026-06-10T14:23:00Z",
+  "source_ip": "203.0.113.45",
+  "dest_ip": "10.0.0.10",
+  "event_type": "ssh_bruteforce",
+  "details": {
+    "failed_attempts": 27,
+    "username": "root"
+  }
+}

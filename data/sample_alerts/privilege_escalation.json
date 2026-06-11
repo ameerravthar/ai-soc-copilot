@@ -1,0 +1,12 @@
+{
+  "alert_id": "alert-004",
+  "timestamp": "2026-06-07T14:55:00Z",
+  "source_ip": "10.0.0.15",
+  "dest_ip": "10.0.0.15",
+  "event_type": "privilege_escalation",
+  "details": {
+    "username": "admin",
+    "method": "sudo",
+    "command": "sudo su -"
+  }
+}

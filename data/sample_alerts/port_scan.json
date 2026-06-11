@@ -1,0 +1,11 @@
+{
+  "alert_id": "alert-002",
+  "timestamp": "2026-06-09T11:45:00Z",
+  "source_ip": "198.51.100.23",
+  "dest_ip": "192.168.1.100",
+  "event_type": "port_scan",
+  "details": {
+    "scanned_ports": [22, 80, 443, 3389],
+    "scan_type": "syn"
+  }
+}
