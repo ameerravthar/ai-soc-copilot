@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import json
 import textwrap
+import re
 from typing import Optional, Dict, Any, List
 
 import httpx
@@ -99,7 +100,52 @@ def _call_openai(messages: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
         data = resp.json()
         # OpenAI returns ``choices[0].message.content``
         content = data["choices"][0]["message"]["content"]
-        return json.loads(content)
+        # Debug diagnostics for API response issues
+        # -----------------------------------------------------------------
+        # Robust JSON extraction – the model sometimes wraps the JSON in markdown
+        # fences (```json, ```jsonc, etc.) or adds stray characters before/after.
+        # -----------------------------------------------------------------
+        def _attempt_parse(txt: str) -> Optional[Dict[str, Any]]:
+            try:
+                return json.loads(txt)
+            except Exception:  # pylint: disable=broad-except
+                return None
+
+        parsed = _attempt_parse(content)
+        if parsed is not None:
+            print("[ai_analyst] JSON parsed successfully on first attempt.")
+            return parsed
+
+        # 1️⃣ Strip markdown fences and leading markers
+        cleaned = content.strip()
+        # Remove leading triple backticks and optional language specifier
+        cleaned = re.sub(r"^```\s*(jsonc?|\"?)?", "", cleaned, flags=re.IGNORECASE)
+        # Remove trailing triple backticks
+        cleaned = re.sub(r"```$", "", cleaned)
+        parsed = _attempt_parse(cleaned)
+        if parsed is not None:
+            print("[ai_analyst] JSON parsed after stripping markdown fences.")
+            return parsed
+
+        # 2️⃣ Fallback: extract the first {...} block
+        brace_start = cleaned.find('{')
+        brace_end = cleaned.rfind('}')
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            json_blob = cleaned[brace_start:brace_end + 1]
+            parsed = _attempt_parse(json_blob)
+            if parsed is not None:
+                print("[ai_analyst] JSON parsed after extracting outer braces.")
+                return parsed
+
+        # 3️⃣ Final fallback – return a minimal report structure
+        print("[ai_analyst] All JSON parsing attempts failed – returning fallback report.")
+        fallback = {
+            "executive_summary": "AI report generation failed.",
+            "technical_findings": content[:500],
+            "risk_analysis": "Unavailable",
+            "recommended_actions": [],
+        }
+        return fallback
     except Exception as e:  # pylint: disable=broad-except
         print(f"[ai_analyst] OpenAI request failed: {e}")
         return None

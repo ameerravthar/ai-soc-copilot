@@ -23,6 +23,7 @@ from src.core.reasoning.mitre_mapper import map_to_mitre
 from src.core.reasoning.investigation_agent import investigate
 from src.core.reasoning.ai_analyst import generate_report
 from src.core.reasoning.threat_intel_agent import enrich_iocs
+from src.core.reasoning.copilot_agent import ask_copilot
 
 # --- Helper utilities ------------------------------------------------------
 
@@ -184,6 +185,69 @@ def main() -> None:
                 st.write(f"- {act}")
 
     # ---- Summary -----------------------------------------------------------
+    st.subheader("AI Incident Copilot")
+    # If the OpenAI API key is not set, inform the user and skip the copilot UI.
+    if not os.getenv("OPENAI_API_KEY"):
+        st.warning(
+            "OpenAI API key not configured – the AI Incident Copilot is unavailable. "
+            "Set the `OPENAI_API_KEY` environment variable to enable this feature."
+        )
+    else:
+        # Initialize conversation state
+        if "copilot_history" not in st.session_state:
+            st.session_state.copilot_history = []  # list of dicts: {"role":..., "content":...}
+        if "selected_question" not in st.session_state:
+            st.session_state.selected_question = None
+        if "copilot_submit" not in st.session_state:
+            st.session_state.copilot_submit = False
+
+        # Suggested question buttons – clicking sends the question directly
+        suggested = [
+            "Why is this incident high severity?",
+            "What should I investigate first?",
+            "Explain the MITRE technique.",
+            "Summarize this incident for management.",
+            "What containment actions should be taken?",
+        ]
+        cols = st.columns(len(suggested))
+        for col, q in zip(cols, suggested):
+            if col.button(q):
+                st.session_state.selected_question = q
+                st.session_state.copilot_submit = True
+
+        # Text input area – use st.chat_input if available (Streamlit ≥1.22)
+        user_input = st.chat_input("Ask the copilot a question…", key="copilot_input")
+        if user_input:
+            st.session_state.selected_question = user_input
+            st.session_state.copilot_submit = True
+
+        # When a question has been submitted, call the backend and display the chat
+        if st.session_state.get("copilot_submit"):
+            question = st.session_state.selected_question
+            try:
+                answer = ask_copilot(
+                    question,
+                    alert,
+                    investigation,
+                    ioc_enrichments,
+                    ai_report,
+                )
+            except Exception as e:  # pylint: disable=broad-except
+                answer = (
+                    "An error occurred while contacting the Copilot service. "
+                    f"Details: {e}"
+                )
+            # Append to chat history (user → assistant)
+            st.session_state.copilot_history.append({"role": "user", "content": question})
+            st.session_state.copilot_history.append({"role": "assistant", "content": answer})
+            st.session_state.copilot_submit = False
+
+        # Render the chat history
+        for msg in st.session_state.copilot_history:
+            if msg["role"] == "user":
+                st.chat_message("user").write(msg["content"])
+            else:
+                st.chat_message("assistant").write(msg["content"])
     st.subheader("Summary")
     st.write(
         f"Alert `{alert.event_type}` from `{alert.source_ip}` targeting `{alert.dest_ip}` "
