@@ -12,6 +12,12 @@ import os
 from pathlib import Path
 
 import streamlit as st
+# Load environment variables from a .env file if python-dotenv is available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # --- Core imports ----------------------------------------------------------
 from src.core.models.alert import Alert

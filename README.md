@@ -204,6 +204,45 @@ Add screenshot here.
 
 ## Roadmap
 
+## Prerequisites
+- Python 3.10 or newer
+- Internet access for OpenAI/OpenRouter API calls
+- Basic familiarity with Streamlit (optional)
+
+## Installation
+*(Already described above)*
+
+## Environment Configuration
+Create a `.env` file (or copy `.env.example`) with the following variables:
+```
+OPENAI_API_KEY=your_api_key_here
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=openai/gpt-4o-mini
+```
+These will be loaded automatically at runtime.
+
+## Running the Demo
+```bash
+PYTHONPATH=. streamlit run src/adapters/streamlit_ui.py
+```
+Open `http://localhost:8501` in your browser.
+
+## Feature Checklist
+- [x] Alert ingestion (JSON upload / sample picker)
+- [x] Deterministic severity scoring
+- [x] MITRE ATT&CK mapping
+- [x] Investigation agent with evidence and recommendations
+- [x] AI analyst report generation (optional, requires API key)
+- [x] Threat Intelligence enrichment
+- [x] Interactive Copilot Q&A
+
+## Troubleshooting
+- **Missing OpenAI key** – The UI will show a warning; set the env var and restart.
+- **Dependency errors** – Ensure you are in the virtual environment and run `pip install -r requirements.txt`.
+- **Port conflicts** – Change the Streamlit port with `streamlit run ... --server.port 8502`.
+
+## Roadmap
+
 ### Phase 1
 
 * Alert ingestion
